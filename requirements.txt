@@ -1,0 +1,8 @@
+# Core — Claude API
+anthropic>=0.40.0
+
+# Gmail API backend (optional — only needed for --source gmail)
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0
+
+# IMAP backend uses Python's built-in imaplib — no extra packages required
