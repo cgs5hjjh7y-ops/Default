@@ -5,14 +5,22 @@ Mail Analysis for Claude Personalization
 Analyzes your email metadata to build a personal profile and writes it to
 CLAUDE.md so Claude can provide more personalized assistance.
 
-Supports two mail backends:
-  - Gmail API (OAuth2, recommended — reads metadata only, no message bodies by default)
-  - IMAP (works with any provider using app passwords)
+Supports three mail backends:
+  - apple  — reads Apple Mail's local .emlx files directly (no credentials needed)
+  - gmail  — Gmail API with OAuth2 (reads metadata only, no message bodies)
+  - imap   — any IMAP provider using app passwords
 
 Usage:
+  python analyze_mail.py --source apple          # Apple Mail (default on macOS)
   python analyze_mail.py --source gmail          # Gmail API (needs credentials.json)
   python analyze_mail.py --source imap \\
-      --host imap.gmail.com --user you@gmail.com  # IMAP
+      --host imap.mail.me.com --user you@icloud.com  # iCloud IMAP
+
+Apple Mail notes:
+  Reads .emlx files from ~/Library/Mail/ — no login, no network, works offline.
+  Apple Mail must have already downloaded the messages (i.e. they exist locally).
+  Requires macOS Full Disk Access for Terminal / your Python interpreter if
+  macOS 10.14+ privacy controls block ~/Library/Mail access.
 
 Gmail API Setup:
   1. Go to https://console.cloud.google.com/
@@ -23,9 +31,9 @@ Gmail API Setup:
      (browser opens for one-time authorisation; token is cached for future runs)
 
 Privacy note:
-  By default only email headers (From, To, Subject, Date) and short snippets
-  are read.  No raw message bodies leave your machine.  The summary sent to
-  Claude contains aggregated patterns, not individual messages.
+  Only email headers (From, To, Subject, Date) and short snippets are read.
+  No raw message bodies leave your machine.  The summary sent to Claude
+  contains aggregated patterns, not individual messages.
 """
 
 import os
@@ -36,11 +44,168 @@ import imaplib
 import argparse
 import email as email_lib
 from email.header import decode_header
+from email.utils import parsedate_to_datetime
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import anthropic
+
+# ── Apple Mail backend ────────────────────────────────────────────────────────
+
+# Apple Mail stores messages as .emlx files under ~/Library/Mail/
+# The format is:  <byte-count>\n<raw-RFC2822-email><Apple-plist>
+# We only need to read the raw-email portion (up to byte-count bytes).
+
+APPLE_MAIL_ROOT = Path.home() / "Library" / "Mail"
+
+# macOS has used V4–V10 over the years; scan whichever exists.
+_MAIL_VERSION_DIRS = [f"V{n}" for n in range(10, 3, -1)]
+
+
+def _find_apple_mail_root() -> Optional[Path]:
+    """Return the versioned Mail data directory, or None if not found."""
+    for vdir in _MAIL_VERSION_DIRS:
+        candidate = APPLE_MAIL_ROOT / vdir
+        if candidate.is_dir():
+            return candidate
+    # Fallback: maybe the root itself contains .mbox dirs (unusual)
+    if APPLE_MAIL_ROOT.is_dir():
+        return APPLE_MAIL_ROOT
+    return None
+
+
+def _parse_emlx(path: Path) -> Optional[dict]:
+    """
+    Parse a single .emlx file and return a header dict, or None on failure.
+    .emlx layout:
+      line 1 : decimal byte-count of the raw RFC 2822 message
+      next N bytes : raw email (headers + body)
+      remainder : Apple binary/XML plist (ignored)
+    """
+    try:
+        raw = path.read_bytes()
+        newline = raw.index(b"\n")
+        byte_count = int(raw[:newline].strip())
+        message_bytes = raw[newline + 1 : newline + 1 + byte_count]
+        msg = email_lib.message_from_bytes(message_bytes)
+
+        return {
+            "from": _decode_header_value(msg.get("From")),
+            "to": _decode_header_value(msg.get("To")),
+            "subject": _decode_header_value(msg.get("Subject")),
+            "date": msg.get("Date", ""),
+            # Grab first 200 chars of the plain-text payload as a snippet
+            "snippet": _extract_snippet(msg),
+        }
+    except Exception:
+        return None
+
+
+def _extract_snippet(msg: email_lib.message.Message) -> str:
+    """Return up to 200 chars of plain-text body from an email.Message."""
+    try:
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    payload = part.get_payload(decode=True)
+                    if payload:
+                        return payload.decode(
+                            part.get_content_charset() or "utf-8", errors="replace"
+                        )[:200]
+        else:
+            payload = msg.get_payload(decode=True)
+            if payload:
+                return payload.decode(
+                    msg.get_content_charset() or "utf-8", errors="replace"
+                )[:200]
+    except Exception:
+        pass
+    return ""
+
+
+def _email_date(date_str: str) -> Optional[datetime]:
+    """Parse an RFC 2822 Date header into an aware datetime, or None."""
+    try:
+        return parsedate_to_datetime(date_str)
+    except Exception:
+        return None
+
+
+def fetch_apple_mail_emails(
+    days: int = 90,
+    max_emails: int = 500,
+    mailbox_filter: Optional[str] = None,
+) -> list[dict]:
+    """
+    Walk ~/Library/Mail/**/*.emlx and return header dicts for messages
+    received within the last *days* days.
+
+    Args:
+        days: How many days back to include (0 = no date filter).
+        max_emails: Stop after collecting this many messages.
+        mailbox_filter: If set, only include paths whose components contain
+                        this string (e.g. "INBOX", "Sent Messages").
+    """
+    mail_root = _find_apple_mail_root()
+    if mail_root is None:
+        print(
+            f"Apple Mail data directory not found under {APPLE_MAIL_ROOT}.\n"
+            "Make sure Apple Mail has been set up and has downloaded messages.\n"
+            "On macOS 10.14+ you may need to grant Full Disk Access to Terminal\n"
+            "in System Settings → Privacy & Security → Full Disk Access."
+        )
+        return []
+
+    print(f"Scanning Apple Mail at: {mail_root}")
+
+    cutoff: Optional[datetime] = None
+    if days > 0:
+        cutoff = datetime.now(tz=timezone.utc) - timedelta(days=days)
+
+    # Collect .emlx paths (skip .partial.emlx — incomplete downloads)
+    emlx_files = [
+        p
+        for p in mail_root.rglob("*.emlx")
+        if not p.name.endswith(".partial.emlx")
+        and (mailbox_filter is None or mailbox_filter.lower() in str(p).lower())
+    ]
+
+    print(f"Found {len(emlx_files):,} .emlx files; parsing headers…")
+
+    emails: list[dict] = []
+    skipped_date = 0
+
+    for i, path in enumerate(emlx_files):
+        entry = _parse_emlx(path)
+        if entry is None:
+            continue
+
+        # Date filter
+        if cutoff and entry["date"]:
+            dt = _email_date(entry["date"])
+            if dt is not None:
+                # Make naive datetimes UTC for comparison
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if dt < cutoff:
+                    skipped_date += 1
+                    continue
+
+        emails.append(entry)
+
+        if len(emails) >= max_emails:
+            break
+
+        if (i + 1) % 500 == 0:
+            print(f"  … scanned {i + 1:,} files, kept {len(emails):,}")
+
+    print(
+        f"Collected {len(emails):,} emails "
+        f"({skipped_date:,} skipped — outside {days}-day window)."
+    )
+    return emails
+
 
 # ── Optional Gmail API dependencies ──────────────────────────────────────────
 try:
@@ -402,9 +567,17 @@ def main() -> int:
     )
     parser.add_argument(
         "--source",
-        choices=["gmail", "imap"],
-        default="gmail",
-        help="Mail backend to use (default: gmail)",
+        choices=["apple", "gmail", "imap"],
+        default="apple",
+        help="Mail backend to use (default: apple)",
+    )
+    parser.add_argument(
+        "--mailbox",
+        default=None,
+        help=(
+            "Apple Mail only: restrict to mailboxes whose path contains this string "
+            "(e.g. 'INBOX', 'Sent Messages', 'iCloud'). Default: all mailboxes."
+        ),
     )
     parser.add_argument(
         "--days",
@@ -449,7 +622,13 @@ def main() -> int:
     args = parser.parse_args()
 
     # ── Fetch emails ──
-    if args.source == "gmail":
+    if args.source == "apple":
+        emails = fetch_apple_mail_emails(
+            days=args.days,
+            max_emails=args.max_emails,
+            mailbox_filter=args.mailbox,
+        )
+    elif args.source == "gmail":
         service = setup_gmail()
         if service is None:
             return 1
