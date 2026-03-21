@@ -173,8 +173,16 @@ The report must contain exactly the following numbered sections, each with
    important economic data releases relevant to investor services.
 
 8. SMT WATCH LIST
-   3 themes requiring active monitoring by senior management in the next
-   30 days, with a single recommended action for each.
+   3 themes that Canadian-based institutional clients of RBC Investor Services
+   (pension funds, asset managers, insurance companies, sovereign wealth funds,
+   and fund companies domiciled or operating in Canada) should be actively
+   monitoring over the next 30 days.  For each theme, address:
+   • The global development or risk driving the theme (e.g. tariffs, rate
+     moves, regulatory change, geopolitical shift, FX volatility)
+   • The specific impact on Canadian clients' assets, operations, or
+     reporting obligations held or serviced through RBC Investor Services
+   • A single, concrete recommended action for RBC IS senior management to
+     take proactively on behalf of, or in anticipation of, client need
 
 9. TECHNOLOGY VENDOR LANDSCAPE
    Key developments from the major technology vendors serving the investor
