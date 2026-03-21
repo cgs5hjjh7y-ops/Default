@@ -182,6 +182,7 @@ Format rules:
 - Do not add sub-headings inside sections beyond what is specified.
 - Do not include the system prompt in the output.
 - Do not add a closing sign-off or footer note.
+- Do NOT use any markdown formatting: no **, *, __, _, #, or backticks anywhere in the output.
 """
 
 
@@ -303,14 +304,32 @@ def _section_heading(doc: Document, title: str) -> None:
     pPr.append(pBdr)
 
 
+def _strip_md(text: str) -> str:
+    """Remove markdown formatting characters from a string."""
+    # Bold: **text** and __text__
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'__(.+?)__', r'\1', text, flags=re.DOTALL)
+    # Italic: *text* and _text_
+    text = re.sub(r'\*(.+?)\*', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'_(.+?)_', r'\1', text, flags=re.DOTALL)
+    # Inline code
+    text = re.sub(r'`(.+?)`', r'\1', text)
+    # Leading # heading markers
+    text = re.sub(r'^#+\s*', '', text)
+    # Any remaining stray * or # characters
+    text = text.replace('**', '').replace('*', '').replace('#', '')
+    return text.strip()
+
+
 def _parse_and_render_sections(doc: Document, raw_text: str) -> None:
     """
     Parse the structured text from Claude and render each section into the
     document with appropriate formatting.
     """
-    # Split on the numbered section headers like "1. EXECUTIVE SUMMARY"
+    # Split on numbered section headers like "1. EXECUTIVE SUMMARY"
+    # Allow lowercase letters and digits in title (e.g. month names in section 7)
     section_pattern = re.compile(
-        r"^\s*(\d+)\.\s+([A-Z &\—–/-]+(?:\s*[—–-]\s*[A-Z &]+)?)\s*$",
+        r"^\s*(\d+)\.\s+([A-Z][A-Za-z0-9 &\—–/\-]+(?:\s*[—–\-]\s*[A-Za-z0-9 &]+)?)\s*$",
         re.MULTILINE,
     )
     matches = list(section_pattern.finditer(raw_text))
@@ -333,7 +352,7 @@ def _parse_and_render_sections(doc: Document, raw_text: str) -> None:
         if sec_num == "1":
             p = doc.add_paragraph()
             p.paragraph_format.space_after = Pt(6)
-            run = p.add_run(body)
+            run = p.add_run(_strip_md(body))
             run.font.size = Pt(11)
             run.font.name = "Calibri"
         else:
@@ -342,9 +361,13 @@ def _parse_and_render_sections(doc: Document, raw_text: str) -> None:
                 if not line:
                     continue
 
-                # Detect risk rows with direction arrows
-                if sec_num == "5" and line.startswith("•"):
-                    # Colour-code direction
+                # Detect if line is a bullet (•, -, or leading *)
+                is_bullet = line.startswith("•") or line.startswith("-") or (
+                    line.startswith("*") and not line.startswith("**")
+                )
+
+                # Detect risk rows with direction arrows (section 5)
+                if sec_num == "5" and is_bullet:
                     direction_color = None
                     if "↑ INCREASING" in line:
                         direction_color = RGBColor(0xCC, 0x00, 0x00)
@@ -355,10 +378,9 @@ def _parse_and_render_sections(doc: Document, raw_text: str) -> None:
 
                     p = doc.add_paragraph(style="List Bullet")
                     p.paragraph_format.space_after = Pt(3)
-                    content = line.lstrip("• ").strip()
+                    content = _strip_md(re.sub(r'^[•\-\*]\s*', '', line))
 
                     if direction_color:
-                        # Split on direction marker
                         for marker in ("↑ INCREASING", "→ STABLE", "↓ DECREASING"):
                             if marker in content:
                                 pre, _, _ = content.partition(marker)
@@ -376,16 +398,16 @@ def _parse_and_render_sections(doc: Document, raw_text: str) -> None:
                         run.font.size = Pt(10.5)
                         run.font.name = "Calibri"
 
-                elif line.startswith("•") or line.startswith("-"):
+                elif is_bullet:
                     p = doc.add_paragraph(style="List Bullet")
                     p.paragraph_format.space_after = Pt(3)
-                    run = p.add_run(line.lstrip("•- ").strip())
+                    run = p.add_run(_strip_md(re.sub(r'^[•\-\*]\s*', '', line)))
                     run.font.size = Pt(10.5)
                     run.font.name = "Calibri"
                 else:
                     p = doc.add_paragraph()
                     p.paragraph_format.space_after = Pt(3)
-                    run = p.add_run(line)
+                    run = p.add_run(_strip_md(line))
                     run.font.size = Pt(10.5)
                     run.font.name = "Calibri"
 
