@@ -209,12 +209,12 @@ The report must contain exactly the following numbered sections, each with
    BNP Paribas, Northern Trust Corporation, Deutsche Bank AG, UBS Group AG,
    RBC Investor & Treasury Services, Societe Generale Securities Services,
    Standard Chartered plc, SIX Group, Brown Brothers Harriman & Co.,
-   Clearstream, Euroclear,
+   Clearstream, Euroclear, CIBC Mellon,
    Coinbase Custody (Coinbase Prime), BitGo, Fidelity Digital Assets,
    Anchorage Digital, Fireblocks, Gemini Custody, Cobo, Hex Trust,
    Copper, Komainu, Zodia Custody, NYDIG, Bitcoin Suisse, Taurus.
    Do NOT include a separator line.  Do NOT include any text other than the
-   header row and the 30 data rows.
+   header row and the 31 data rows.
 
 ---
 
@@ -278,11 +278,11 @@ def _fill_template_header(doc: Document, today: date) -> None:
             run._r.getparent().remove(run._r)
         r = para.add_run(text)
         r.font.name = "Calibri"
-        r.font.size = Pt(11)
+        r.font.size = Pt(16) if bold else Pt(11)
         r.font.bold = bold
 
     table = doc.tables[0]
-    # Row 1: Title (merged across columns) — bold
+    # Row 1: Title (merged across columns) — bold, larger font
     _set_cell(table.cell(1, 0), "Monthly Executive Report", bold=True)
     # Row 2: To
     _set_cell(table.cell(2, 1), "Senior Management Team")
