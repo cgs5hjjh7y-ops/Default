@@ -52,8 +52,7 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
-from docx.shared import Inches, Pt, RGBColor
-from docx.util import Cm
+from docx.shared import Cm, Inches, Pt, RGBColor
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -84,7 +83,7 @@ try:
     from google.auth.transport.requests import Request
     from googleapiclient.discovery import build as _gs_build
     GMAIL_AVAILABLE = True
-except ImportError:
+except Exception:
     GMAIL_AVAILABLE = False
 
 
