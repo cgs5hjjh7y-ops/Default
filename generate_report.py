@@ -173,12 +173,32 @@ The report must contain exactly the following numbered sections, each with
    3 themes requiring active monitoring by senior management in the next
    30 days, with a single recommended action for each.
 
+9. TECHNOLOGY VENDOR LANDSCAPE
+   Key developments from the major technology vendors serving the investor
+   services industry: SimCorp, SS&C Technologies, Broadridge, FIS Global,
+   Temenos, Charles River (MSCI), and notable FinTech challengers (e.g.
+   Nasdaq Financial Technology, Clearstream, SWIFT, Taskize).  Cover product
+   launches, partnerships, M&A activity, and strategic positioning relevant
+   to custody, fund administration, and data/reporting services.
+
+10. KEY MACRO ECONOMIC INDICES
+   Output ONLY a pipe-separated table of the following indices as at end of
+   {prev_month}.  Use your best knowledge of approximate closing levels; do
+   not invent fictitious precision — round figures are acceptable.
+   Columns: Index | Level | Month Change | YTD Change
+   Rows (in this order): S&P 500, FTSE 100, EURO STOXX 50, Nikkei 225,
+   EUR/USD, GBP/USD, USD/JPY, 10Y UST Yield, 10Y Bund Yield, Brent Crude,
+   Gold, VIX.
+   Do NOT include a separator line (no --- rows).  Do NOT include any text
+   other than the header row and the 12 data rows.
+
 ---
 
 Format rules:
 - Use the section numbers and titles exactly as shown above.
-- Within sections 2–6, use bullet points starting with "•".
+- Within sections 2–6 and 9, use bullet points starting with "•".
 - For section 7, use a dated list where dates are known: "dd Mmm — [Event]".
+- For section 10, output only pipe-separated rows as instructed — no bullets.
 - Do not add sub-headings inside sections beyond what is specified.
 - Do not include the system prompt in the output.
 - Do not add a closing sign-off or footer note.
@@ -228,17 +248,18 @@ def _fill_template_header(doc: Document, today: date) -> None:
     if not doc.tables:
         return
 
-    def _set_cell(cell, text: str) -> None:
+    def _set_cell(cell, text: str, bold: bool = False) -> None:
         para = cell.paragraphs[0]
         for run in list(para.runs):
             run._r.getparent().remove(run._r)
         r = para.add_run(text)
         r.font.name = "Calibri"
         r.font.size = Pt(11)
+        r.font.bold = bold
 
     table = doc.tables[0]
-    # Row 1: Title (merged across columns)
-    _set_cell(table.cell(1, 0), "Monthly Executive Report")
+    # Row 1: Title (merged across columns) — bold
+    _set_cell(table.cell(1, 0), "Monthly Executive Report", bold=True)
     # Row 2: To
     _set_cell(table.cell(2, 1), "Senior Management Team")
     # Row 3: From
@@ -287,6 +308,46 @@ def _strip_md(text: str) -> str:
     return text.strip()
 
 
+def _render_pipe_table(doc: Document, body: str) -> None:
+    """Render pipe-separated lines from *body* as a styled Word table."""
+    lines = [l.strip() for l in body.splitlines() if l.strip() and "|" in l]
+    if not lines:
+        return
+
+    rows_data = [[c.strip() for c in line.split("|")] for line in lines]
+    # Determine column count from the widest row
+    n_cols = max(len(r) for r in rows_data)
+
+    table = doc.add_table(rows=0, cols=n_cols)
+    table.style = "Table Grid"
+
+    for row_idx, row_data in enumerate(rows_data):
+        row = table.add_row()
+        is_header = row_idx == 0
+        for col_idx in range(n_cols):
+            cell = row.cells[col_idx]
+            text = row_data[col_idx] if col_idx < len(row_data) else ""
+            if is_header:
+                _set_cell_bg(cell, "00429B")
+            elif row_idx % 2 == 0:
+                _set_cell_bg(cell, "EEF3FA")  # light blue stripe
+            para = cell.paragraphs[0]
+            para.paragraph_format.space_after = Pt(2)
+            para.paragraph_format.space_before = Pt(2)
+            run = para.add_run(text)
+            run.font.name = "Calibri"
+            run.font.size = Pt(10)
+            run.font.bold = is_header
+            if is_header:
+                run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+            elif col_idx > 0:
+                # Colour positive/negative change columns
+                if text.startswith("+"):
+                    run.font.color.rgb = RGBColor(0x00, 0x7A, 0x33)
+                elif text.startswith("-"):
+                    run.font.color.rgb = RGBColor(0xCC, 0x00, 0x00)
+
+
 def _parse_and_render_sections(doc: Document, raw_text: str) -> None:
     """
     Parse the structured text from Claude and render each section into the
@@ -313,6 +374,11 @@ def _parse_and_render_sections(doc: Document, raw_text: str) -> None:
         body = raw_text[start:end].strip()
 
         _section_heading(doc, f"{sec_num}. {sec_title}")
+
+        # Section 10 is a pipe-delimited table of macro indices
+        if sec_num == "10":
+            _render_pipe_table(doc, body)
+            continue
 
         # Section 1 is a prose paragraph; the rest are bullet lists
         if sec_num == "1":
