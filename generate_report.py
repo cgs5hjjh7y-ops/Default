@@ -153,11 +153,14 @@ The report must contain exactly the following numbered sections, each with
    Trust, Citi, HSBC, etc.) and FinTech challengers.
 
 5. RISK DASHBOARD
-   The top 5 risks for investor services firms for the month.  For each:
-   • Risk title (e.g. "Counterparty Credit – EM Sovereign Exposure")
-   • Risk category: [MARKET | CREDIT | OPERATIONAL | REGULATORY | CYBER | LIQUIDITY]
-   • Brief description (2 sentences max)
-   • Direction: ↑ INCREASING | → STABLE | ↓ DECREASING
+   Output ONLY a pipe-separated table of the top 5 risks for investor services
+   firms this month.
+   Columns: Risk Title | Category | Description | Direction
+   Category values: MARKET | CREDIT | OPERATIONAL | REGULATORY | CYBER | LIQUIDITY
+   Direction values: ↑ INCREASING | → STABLE | ↓ DECREASING
+   Description: 1-2 sentences maximum per risk.
+   Do NOT include a separator line.  Do NOT include any text other than the
+   header row and the 5 data rows.
 
 6. TECHNOLOGY & DIGITAL ASSETS
    AI adoption in fund admin, tokenisation of funds/securities, DLT
@@ -192,13 +195,34 @@ The report must contain exactly the following numbered sections, each with
    Do NOT include a separator line (no --- rows).  Do NOT include any text
    other than the header row and the 12 data rows.
 
+11. CUSTODIAN & PEER INSTITUTION NEWS
+   Output ONLY a pipe-separated table providing the most significant recent
+   development for each of the following institutions during {prev_month}.
+   Columns: Institution | Key Development | Significance
+   If there is no material news for an institution this month, write
+   "No material news this month" in the Key Development column and leave
+   Significance as "—".
+   Include EVERY institution below as its own row — do not omit any.
+   Institutions (in this order):
+   BNY (Bank of New York Mellon), State Street Corporation,
+   JPMorgan Chase & Co., Citigroup Inc. (Citi), HSBC Holdings plc,
+   BNP Paribas, Northern Trust Corporation, Deutsche Bank AG, UBS Group AG,
+   RBC Investor & Treasury Services, Societe Generale Securities Services,
+   Standard Chartered plc, SIX Group, Brown Brothers Harriman & Co.,
+   Clearstream, Euroclear,
+   Coinbase Custody (Coinbase Prime), BitGo, Fidelity Digital Assets,
+   Anchorage Digital, Fireblocks, Gemini Custody, Cobo, Hex Trust,
+   Copper, Komainu, Zodia Custody, NYDIG, Bitcoin Suisse, Taurus.
+   Do NOT include a separator line.  Do NOT include any text other than the
+   header row and the 30 data rows.
+
 ---
 
 Format rules:
 - Use the section numbers and titles exactly as shown above.
-- Within sections 2–6 and 9, use bullet points starting with "•".
+- Within sections 2–4, 6, 8, and 9, use bullet points starting with "•".
 - For section 7, use a dated list where dates are known: "dd Mmm — [Event]".
-- For section 10, output only pipe-separated rows as instructed — no bullets.
+- For sections 5, 10, and 11, output only pipe-separated rows as instructed — no bullets.
 - Do not add sub-headings inside sections beyond what is specified.
 - Do not include the system prompt in the output.
 - Do not add a closing sign-off or footer note.
@@ -223,7 +247,7 @@ def generate_report_content(prev_month_year: int, prev_month_month: int) -> str:
     print(f"Generating report for {prev_m} via Claude…")
     response = client.messages.create(
         model="claude-opus-4-6",
-        max_tokens=4096,
+        max_tokens=8192,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -340,11 +364,21 @@ def _render_pipe_table(doc: Document, body: str) -> None:
             run.font.bold = is_header
             if is_header:
                 run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-            elif col_idx > 0:
-                # Colour positive/negative change columns
-                if text.startswith("+"):
+            else:
+                # Direction arrow colouring (risk table)
+                if "↑ INCREASING" in text:
+                    run.font.bold = True
+                    run.font.color.rgb = RGBColor(0xCC, 0x00, 0x00)
+                elif "→ STABLE" in text:
+                    run.font.bold = True
+                    run.font.color.rgb = RGBColor(0xFF, 0x80, 0x00)
+                elif "↓ DECREASING" in text:
+                    run.font.bold = True
                     run.font.color.rgb = RGBColor(0x00, 0x7A, 0x33)
-                elif text.startswith("-"):
+                # Positive/negative change colouring (macro indices table)
+                elif col_idx > 0 and text.startswith("+"):
+                    run.font.color.rgb = RGBColor(0x00, 0x7A, 0x33)
+                elif col_idx > 0 and text.startswith("-"):
                     run.font.color.rgb = RGBColor(0xCC, 0x00, 0x00)
 
 
@@ -375,8 +409,8 @@ def _parse_and_render_sections(doc: Document, raw_text: str) -> None:
 
         _section_heading(doc, f"{sec_num}. {sec_title}")
 
-        # Section 10 is a pipe-delimited table of macro indices
-        if sec_num == "10":
+        # Sections rendered as pipe-delimited tables
+        if sec_num in ("5", "10", "11"):
             _render_pipe_table(doc, body)
             continue
 
@@ -398,39 +432,7 @@ def _parse_and_render_sections(doc: Document, raw_text: str) -> None:
                     line.startswith("*") and not line.startswith("**")
                 )
 
-                # Detect risk rows with direction arrows (section 5)
-                if sec_num == "5" and is_bullet:
-                    direction_color = None
-                    if "↑ INCREASING" in line:
-                        direction_color = RGBColor(0xCC, 0x00, 0x00)
-                    elif "↓ DECREASING" in line:
-                        direction_color = RGBColor(0x00, 0x7A, 0x33)
-                    elif "→ STABLE" in line:
-                        direction_color = RGBColor(0xFF, 0x80, 0x00)
-
-                    p = doc.add_paragraph(style="List Bullet")
-                    p.paragraph_format.space_after = Pt(3)
-                    content = _strip_md(re.sub(r'^[•\-\*]\s*', '', line))
-
-                    if direction_color:
-                        for marker in ("↑ INCREASING", "→ STABLE", "↓ DECREASING"):
-                            if marker in content:
-                                pre, _, _ = content.partition(marker)
-                                run = p.add_run(pre.rstrip())
-                                run.font.size = Pt(10.5)
-                                run.font.name = "Calibri"
-                                run2 = p.add_run(f"  {marker}")
-                                run2.font.size = Pt(10.5)
-                                run2.font.bold = True
-                                run2.font.color.rgb = direction_color
-                                run2.font.name = "Calibri"
-                                break
-                    else:
-                        run = p.add_run(content)
-                        run.font.size = Pt(10.5)
-                        run.font.name = "Calibri"
-
-                elif is_bullet:
+                if is_bullet:
                     p = doc.add_paragraph(style="List Bullet")
                     p.paragraph_format.space_after = Pt(3)
                     run = p.add_run(_strip_md(re.sub(r'^[•\-\*]\s*', '', line)))
