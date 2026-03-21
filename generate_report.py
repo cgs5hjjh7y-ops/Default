@@ -223,62 +223,28 @@ def _set_cell_bg(cell, hex_color: str) -> None:
     tcPr.append(shd)
 
 
-def _add_cover_page(doc: Document, prev_month: str, today: date) -> None:
-    """Insert a branded cover page."""
-    # Top colour band
-    table = doc.add_table(rows=1, cols=1)
-    table.style = "Table Grid"
-    cell = table.cell(0, 0)
-    _set_cell_bg(cell, "00429B")
-    p = cell.paragraphs[0]
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run("RBC INVESTOR SERVICES")
-    run.font.size = Pt(22)
-    run.font.bold = True
-    run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-    run.font.name = "Calibri"
-    table.rows[0].height = Cm(2.5)
+def _fill_template_header(doc: Document, today: date) -> None:
+    """Populate the template's memo-style header table with report metadata."""
+    if not doc.tables:
+        return
 
-    doc.add_paragraph()
+    def _set_cell(cell, text: str) -> None:
+        para = cell.paragraphs[0]
+        for run in list(para.runs):
+            run._r.getparent().remove(run._r)
+        r = para.add_run(text)
+        r.font.name = "Calibri"
+        r.font.size = Pt(11)
 
-    # Title block
-    title_p = doc.add_paragraph()
-    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = title_p.add_run("MONTHLY EXECUTIVE REPORT")
-    run.font.size = Pt(28)
-    run.font.bold = True
-    run.font.color.rgb = RBC_BLUE
-    run.font.name = "Calibri"
-
-    sub_p = doc.add_paragraph()
-    sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = sub_p.add_run(f"For the period: {prev_month}")
-    run.font.size = Pt(16)
-    run.font.color.rgb = RBC_DARK
-    run.font.name = "Calibri"
-
-    doc.add_paragraph()
-
-    date_p = doc.add_paragraph()
-    date_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = date_p.add_run(
-        f"Prepared for: Senior Management Team (SMT)\n"
-        f"Published: {today.strftime('%d %B %Y')}\n"
-        f"Classification: RESTRICTED – SMT ONLY"
-    )
-    run.font.size = Pt(11)
-    run.font.color.rgb = RBC_DARK
-    run.font.name = "Calibri"
-
-    # Gold divider
-    table2 = doc.add_table(rows=1, cols=1)
-    table2.style = "Table Grid"
-    cell2 = table2.cell(0, 0)
-    _set_cell_bg(cell2, "FFBE00")
-    table2.rows[0].height = Cm(0.4)
-    table2.cell(0, 0).paragraphs[0].text = ""
-
-    doc.add_page_break()
+    table = doc.tables[0]
+    # Row 1: Title (merged across columns)
+    _set_cell(table.cell(1, 0), "Monthly Executive Report")
+    # Row 2: To
+    _set_cell(table.cell(2, 1), "Senior Management Team")
+    # Row 3: From
+    _set_cell(table.cell(3, 1), "Ian Sinclair")
+    # Row 4: Date
+    _set_cell(table.cell(4, 1), today.strftime("%d %B %Y"))
 
 
 def _section_heading(doc: Document, title: str) -> None:
@@ -424,22 +390,27 @@ def build_word_document(
     """
     if TEMPLATE_FILE.exists():
         doc = Document(str(TEMPLATE_FILE))
-        # Clear all existing body paragraphs in the template
+        # Remove top-level paragraphs but keep the template tables
         for para in list(doc.paragraphs):
             para._element.getparent().remove(para._element)
+        # Fill in the memo header table from the template
+        _fill_template_header(doc, today)
+        # Remove the Summary placeholder table (index 1) if present
+        if len(doc.tables) > 1:
+            tbl = doc.tables[1]
+            tbl._element.getparent().remove(tbl._element)
         print(f"Using template: {TEMPLATE_FILE}")
     else:
         doc = Document()
-        # Page margins
         section = doc.sections[0]
         section.top_margin = Cm(2.0)
         section.bottom_margin = Cm(2.0)
         section.left_margin = Cm(2.5)
         section.right_margin = Cm(2.5)
+        prev_m = month_label(prev_month_year, prev_month_month)
+        _add_cover_page(doc, prev_m, today)
         print("No template found — building document from scratch.")
 
-    prev_m = month_label(prev_month_year, prev_month_month)
-    _add_cover_page(doc, prev_m, today)
     _parse_and_render_sections(doc, report_text)
 
     # Footer disclaimer
