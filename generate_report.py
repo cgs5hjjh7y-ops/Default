@@ -57,6 +57,8 @@ from docx.shared import Cm, Inches, Pt, RGBColor
 RECIPIENTS = [
     "Ian.sinclair@rbc.com",
     "ian@sinclairandsinclair.co.uk",
+    "paul.p.burd@rbc.com",
+    "joel.kornblum@rbc.com",
 ]
 
 TEMPLATE_FILE = Path("report_template.docx")
