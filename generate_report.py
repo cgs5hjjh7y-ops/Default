@@ -199,7 +199,7 @@ The report must contain exactly the following numbered sections, each with
    BNY (Bank of New York Mellon), State Street Corporation,
    JPMorgan Chase & Co., Citigroup Inc. (Citi), HSBC Holdings plc,
    BNP Paribas, Northern Trust Corporation, Deutsche Bank AG, UBS Group AG,
-   RBC Investor & Treasury Services, Societe Generale Securities Services,
+   RBC Investor Services, Societe Generale Securities Services,
    Standard Chartered plc, Brown Brothers Harriman & Co.,
    Clearstream, Euroclear, CIBC Mellon,
    Coinbase Custody (Coinbase Prime), BitGo, Fidelity Digital Assets,
@@ -219,7 +219,7 @@ Format rules:
 - Do not include the system prompt in the output.
 - Do not add a closing sign-off or footer note.
 - Do NOT use any markdown formatting: no **, *, __, _, #, or backticks anywhere in the output.
-- In company and index names always use "&" (the ampersand symbol), never spell it out as "and". Examples: S&P 500, SS&C Technologies, Brown Brothers Harriman & Co., JPMorgan Chase & Co., RBC Investor & Treasury Services, Societe Generale Securities Services.
+- In company and index names always use "&" (the ampersand symbol), never spell it out as "and". Examples: S&P 500, SS&C Technologies, Brown Brothers Harriman & Co., JPMorgan Chase & Co., RBC Investor Services, Societe Generale Securities Services.
 """
 
 
@@ -277,6 +277,7 @@ def _fill_template_header(doc: Document, today: date) -> None:
     table = doc.tables[0]
     # Row 1: Title (merged across columns) — bold, larger font
     _set_cell(table.cell(1, 0), "Monthly Executive Report", bold=True)
+    table.cell(1, 0).paragraphs[0].paragraph_format.space_after = Pt(6)
     # Row 2: To
     _set_cell(table.cell(2, 1), "Senior Management Team")
     # Row 3: From
