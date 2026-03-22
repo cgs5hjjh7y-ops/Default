@@ -6,7 +6,7 @@ Generates an AI-authored executive report for the RBC Investor Services
 Senior Management Team (SMT) covering the preceding calendar month.
 
 The report is produced as a Word (.docx) document and emailed via Gmail
-OAuth2 to the configured recipients.
+SMTP (App Password) to the configured recipients.
 
 Usage:
   python generate_report.py               # Generate & email for the previous month
@@ -16,13 +16,13 @@ Usage:
 Scheduling:
   Run via cron on the 1st of each month (see setup_cron.sh).
 
-Gmail OAuth2 setup:
-  1. Visit https://console.cloud.google.com/
-  2. Create/select a project → Enable the Gmail API
-  3. Create OAuth 2.0 credentials (Desktop App type)
-  4. Download JSON → save as credentials.json in this directory
-  5. Run once interactively so a browser token is generated:
-       python generate_report.py --dry-run
+Gmail App Password setup:
+  1. Enable 2-Step Verification on your Google account
+  2. Visit https://myaccount.google.com/apppasswords
+  3. Generate a 16-character App Password
+  4. Set environment variables:
+       GMAIL_ADDRESS=iansinclair3011@gmail.com
+       GMAIL_APP_PASSWORD=<your-16-char-password>
 
 Word template:
   If report_template.docx exists in this directory it will be used as the
@@ -31,17 +31,15 @@ Word template:
 """
 
 import argparse
-import base64
 import io
-import json
 import os
-import pickle
 import re
+import smtplib
+import ssl
 import sys
 from calendar import month_name
 from datetime import date, datetime
-from email import encoders
-from email.mime.base import MIMEBase
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -62,29 +60,15 @@ RECIPIENTS = [
 ]
 
 TEMPLATE_FILE = Path("report_template.docx")
-CREDENTIALS_FILE = Path("credentials.json")
-TOKEN_FILE = Path.home() / ".rbc_report_gmail_token.pickle"
 
 # RBC brand colours
 RBC_BLUE = RGBColor(0x00, 0x42, 0x9B)   # #00429B
 RBC_GOLD = RGBColor(0xFF, 0xBE, 0x00)   # #FFBE00
 RBC_DARK = RGBColor(0x1A, 0x1A, 0x2E)   # near-black
 
-GMAIL_SCOPES = [
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.readonly",
-]
-
-# ── Lazy Gmail imports ─────────────────────────────────────────────────────────
-
-try:
-    from google.oauth2.credentials import Credentials
-    from google_auth_oauthlib.flow import InstalledAppFlow
-    from google.auth.transport.requests import Request
-    from googleapiclient.discovery import build as _gs_build
-    GMAIL_AVAILABLE = True
-except Exception:
-    GMAIL_AVAILABLE = False
+# Gmail SMTP — set these as environment variables (or GitHub Secrets)
+GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS", "iansinclair3011@gmail.com")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 
 
 # ── Date helpers ───────────────────────────────────────────────────────────────
@@ -507,44 +491,7 @@ def build_word_document(
     return buf.getvalue()
 
 
-# ── Gmail sender ───────────────────────────────────────────────────────────────
-
-def _get_gmail_service():
-    """Authenticate and return a Gmail API service object."""
-    if not GMAIL_AVAILABLE:
-        raise RuntimeError(
-            "Gmail API libraries not installed.\n"
-            "Run: pip install google-auth-oauthlib google-api-python-client"
-        )
-
-    creds = None
-    if TOKEN_FILE.exists():
-        with open(TOKEN_FILE, "rb") as fh:
-            creds = pickle.load(fh)
-
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            if not CREDENTIALS_FILE.exists():
-                raise FileNotFoundError(
-                    f"\nGmail credentials not found at {CREDENTIALS_FILE}.\n\n"
-                    "Setup:\n"
-                    "  1. https://console.cloud.google.com/ → enable Gmail API\n"
-                    "  2. Create OAuth 2.0 credentials (Desktop App)\n"
-                    "  3. Download JSON → save as credentials.json here\n"
-                    "  4. Run: python generate_report.py --dry-run  (one-time browser auth)\n"
-                )
-            flow = InstalledAppFlow.from_client_secrets_file(
-                str(CREDENTIALS_FILE), GMAIL_SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-
-        with open(TOKEN_FILE, "wb") as fh:
-            pickle.dump(creds, fh)
-
-    return _gs_build("gmail", "v1", credentials=creds)
-
+# ── Gmail SMTP sender ──────────────────────────────────────────────────────────
 
 def send_email(
     docx_bytes: bytes,
@@ -552,8 +499,12 @@ def send_email(
     prev_month_month: int,
     today: date,
 ) -> None:
-    """Send the report as an email attachment via Gmail."""
-    service = _get_gmail_service()
+    """Send the report as an email attachment via Gmail SMTP (App Password)."""
+    if not GMAIL_APP_PASSWORD:
+        raise RuntimeError(
+            "GMAIL_APP_PASSWORD environment variable is not set.\n"
+            "Set it to your 16-character Gmail App Password."
+        )
 
     prev_m = month_label(prev_month_year, prev_month_month)
     subject = f"RBC Investor Services — Monthly Executive Report: {prev_m}"
@@ -578,6 +529,9 @@ for <strong>{prev_m}</strong>, prepared for the Senior Management Team.</p>
   <li>Technology &amp; Digital Assets</li>
   <li>Key Upcoming Events</li>
   <li>SMT Watch List</li>
+  <li>Technology Vendor Landscape</li>
+  <li>Key Macro Economic Indices</li>
+  <li>Custodian &amp; Peer Institution News</li>
 </ul>
 
 <p>Published: {today.strftime('%d %B %Y')}<br>
@@ -594,23 +548,20 @@ and delete it immediately.
 
     msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
+    msg["From"] = GMAIL_ADDRESS
     msg["To"] = ", ".join(RECIPIENTS)
 
-    # HTML body
     msg.attach(MIMEText(body_html, "html"))
 
-    # .docx attachment
-    part = MIMEBase(
-        "application",
-        "vnd.openxmlformats-officedocument.wordprocessingml.document",
-    )
-    part.set_payload(docx_bytes)
-    encoders.encode_base64(part)
-    part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
-    msg.attach(part)
+    attachment = MIMEApplication(docx_bytes, Name=filename)
+    attachment["Content-Disposition"] = f'attachment; filename="{filename}"'
+    msg.attach(attachment)
 
-    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-    service.users().messages().send(userId="me", body={"raw": raw}).execute()
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+        smtp.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+        smtp.send_message(msg)
+
     print(f"Email sent to: {', '.join(RECIPIENTS)}")
 
 
