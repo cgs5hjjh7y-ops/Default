@@ -219,6 +219,7 @@ Format rules:
 - Do not include the system prompt in the output.
 - Do not add a closing sign-off or footer note.
 - Do NOT use any markdown formatting: no **, *, __, _, #, or backticks anywhere in the output.
+- In company and index names always use "&" (the ampersand symbol), never spell it out as "and". Examples: S&P 500, SS&C Technologies, Brown Brothers Harriman & Co., JPMorgan Chase & Co., RBC Investor & Treasury Services, Societe Generale Securities Services.
 """
 
 
