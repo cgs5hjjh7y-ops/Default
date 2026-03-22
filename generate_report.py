@@ -200,13 +200,13 @@ The report must contain exactly the following numbered sections, each with
    JPMorgan Chase & Co., Citigroup Inc. (Citi), HSBC Holdings plc,
    BNP Paribas, Northern Trust Corporation, Deutsche Bank AG, UBS Group AG,
    RBC Investor & Treasury Services, Societe Generale Securities Services,
-   Standard Chartered plc, SIX Group, Brown Brothers Harriman & Co.,
+   Standard Chartered plc, Brown Brothers Harriman & Co.,
    Clearstream, Euroclear, CIBC Mellon,
    Coinbase Custody (Coinbase Prime), BitGo, Fidelity Digital Assets,
-   Anchorage Digital, Fireblocks, Gemini Custody, Cobo, Hex Trust,
-   Copper, Komainu, Zodia Custody, NYDIG, Bitcoin Suisse, Taurus.
+   Anchorage Digital, Fireblocks, Copper, Komainu, Zodia Custody,
+   NYDIG, Taurus, Kraken.
    Do NOT include a separator line.  Do NOT include any text other than the
-   header row and the 31 data rows.
+   header row and the 27 data rows.
 
 ---
 
