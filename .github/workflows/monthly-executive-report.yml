@@ -1,0 +1,65 @@
+name: RBC IS Monthly Executive Report
+
+on:
+  # Run at 07:00 UTC on the 1st of every month
+  schedule:
+    - cron: '0 7 1 * *'
+  # Allow manual trigger (with optional month/year override)
+  workflow_dispatch:
+    inputs:
+      year:
+        description: 'Report year (default: previous month year)'
+        required: false
+        type: string
+      month:
+        description: 'Report month number (default: previous month)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run (generate but do not email)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  generate-and-email:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate and email report
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.year }}" ]; then
+            ARGS="$ARGS --year ${{ github.event.inputs.year }}"
+          fi
+          if [ -n "${{ github.event.inputs.month }}" ]; then
+            ARGS="$ARGS --month ${{ github.event.inputs.month }}"
+          fi
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python generate_report.py $ARGS
+
+      - name: Upload report as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: executive-report
+          path: RBC_IS_Executive_Report_*.docx
+          retention-days: 90
