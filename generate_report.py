@@ -57,6 +57,9 @@ from docx.shared import Cm, Inches, Pt, RGBColor
 RECIPIENTS = [
     "Ian.sinclair@rbc.com",
     "ian@sinclairandsinclair.co.uk",
+    "paul.p.burd@rbc.com",
+    "joel.kornblum@rbc.com",
+    "christine.knott@rbc.com",
 ]
 
 TEMPLATE_FILE = Path("report_template.docx")
@@ -488,6 +491,23 @@ def build_word_document(
     run.font.italic = True
     run.font.name = "Calibri"
 
+    # AI-generated disclaimer
+    doc.add_paragraph()
+    ai_disclaimer_p = doc.add_paragraph()
+    ai_disclaimer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    ai_run = ai_disclaimer_p.add_run(
+        "DISCLAIMER: This report has been generated autonomously by Claude, an AI assistant "
+        "developed by Anthropic, using agentic AI techniques and publicly available information. "
+        "The content has not been reviewed or verified by a human and may contain errors, "
+        "omissions, or inaccuracies. It should not be relied upon as financial, investment, or "
+        "professional advice. Readers are encouraged to independently verify any information "
+        "before making decisions based on this report."
+    )
+    ai_run.font.size = Pt(7)
+    ai_run.font.color.rgb = RGBColor(0xAA, 0xAA, 0xAA)
+    ai_run.font.italic = True
+    ai_run.font.name = "Calibri"
+
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
@@ -500,8 +520,11 @@ def send_email(
     prev_month_year: int,
     prev_month_month: int,
     today: date,
+    recipients: list[str] | None = None,
 ) -> None:
     """Send the report as an email attachment via Gmail SMTP (App Password)."""
+    if recipients is None:
+        recipients = RECIPIENTS
     if not GMAIL_APP_PASSWORD:
         raise RuntimeError(
             "GMAIL_APP_PASSWORD environment variable is not set.\n"
@@ -551,7 +574,7 @@ and delete it immediately.
     msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
     msg["From"] = GMAIL_ADDRESS
-    msg["To"] = ", ".join(RECIPIENTS)
+    msg["To"] = ", ".join(recipients)
 
     msg.attach(MIMEText(body_html, "html"))
 
@@ -564,7 +587,7 @@ and delete it immediately.
         smtp.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
         smtp.send_message(msg)
 
-    print(f"Email sent to: {', '.join(RECIPIENTS)}")
+    print(f"Email sent to: {', '.join(recipients)}")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -597,6 +620,11 @@ def main() -> int:
         default=".",
         help="Directory to save the .docx file (default: current directory)",
     )
+    parser.add_argument(
+        "--recipient",
+        default=None,
+        help="Send to a single recipient email address (overrides default RECIPIENTS list)",
+    )
     args = parser.parse_args()
 
     today = date.today()
@@ -624,7 +652,8 @@ def main() -> int:
     if args.dry_run:
         print("[Dry run] Email not sent.")
     else:
-        send_email(docx_bytes, prev_year, prev_month, today)
+        recipients = [args.recipient] if args.recipient else None
+        send_email(docx_bytes, prev_year, prev_month, today, recipients)
 
     return 0
 
