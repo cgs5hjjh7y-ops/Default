@@ -491,6 +491,23 @@ def build_word_document(
     run.font.italic = True
     run.font.name = "Calibri"
 
+    # AI-generated disclaimer
+    doc.add_paragraph()
+    ai_disclaimer_p = doc.add_paragraph()
+    ai_disclaimer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    ai_run = ai_disclaimer_p.add_run(
+        "DISCLAIMER: This report has been generated autonomously by Claude, an AI assistant "
+        "developed by Anthropic, using agentic AI techniques and publicly available information. "
+        "The content has not been reviewed or verified by a human and may contain errors, "
+        "omissions, or inaccuracies. It should not be relied upon as financial, investment, or "
+        "professional advice. Readers are encouraged to independently verify any information "
+        "before making decisions based on this report."
+    )
+    ai_run.font.size = Pt(7)
+    ai_run.font.color.rgb = RGBColor(0xAA, 0xAA, 0xAA)
+    ai_run.font.italic = True
+    ai_run.font.name = "Calibri"
+
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
