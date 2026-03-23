@@ -20,6 +20,10 @@ on:
         required: false
         default: false
         type: boolean
+      recipient:
+        description: 'Send to a single recipient email address (leave blank to use default list)'
+        required: false
+        type: string
 
 jobs:
   generate-and-email:
@@ -53,6 +57,9 @@ jobs:
           fi
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
+          fi
+          if [ -n "${{ github.event.inputs.recipient }}" ]; then
+            ARGS="$ARGS --recipient ${{ github.event.inputs.recipient }}"
           fi
           python generate_report.py $ARGS
 

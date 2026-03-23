@@ -520,8 +520,11 @@ def send_email(
     prev_month_year: int,
     prev_month_month: int,
     today: date,
+    recipients: list[str] | None = None,
 ) -> None:
     """Send the report as an email attachment via Gmail SMTP (App Password)."""
+    if recipients is None:
+        recipients = RECIPIENTS
     if not GMAIL_APP_PASSWORD:
         raise RuntimeError(
             "GMAIL_APP_PASSWORD environment variable is not set.\n"
@@ -571,7 +574,7 @@ and delete it immediately.
     msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
     msg["From"] = GMAIL_ADDRESS
-    msg["To"] = ", ".join(RECIPIENTS)
+    msg["To"] = ", ".join(recipients)
 
     msg.attach(MIMEText(body_html, "html"))
 
@@ -584,7 +587,7 @@ and delete it immediately.
         smtp.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
         smtp.send_message(msg)
 
-    print(f"Email sent to: {', '.join(RECIPIENTS)}")
+    print(f"Email sent to: {', '.join(recipients)}")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -617,6 +620,11 @@ def main() -> int:
         default=".",
         help="Directory to save the .docx file (default: current directory)",
     )
+    parser.add_argument(
+        "--recipient",
+        default=None,
+        help="Send to a single recipient email address (overrides default RECIPIENTS list)",
+    )
     args = parser.parse_args()
 
     today = date.today()
@@ -644,7 +652,8 @@ def main() -> int:
     if args.dry_run:
         print("[Dry run] Email not sent.")
     else:
-        send_email(docx_bytes, prev_year, prev_month, today)
+        recipients = [args.recipient] if args.recipient else None
+        send_email(docx_bytes, prev_year, prev_month, today, recipients)
 
     return 0
 
