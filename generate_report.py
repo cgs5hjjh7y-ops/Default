@@ -59,6 +59,7 @@ RECIPIENTS = [
     "ian@sinclairandsinclair.co.uk",
     "paul.p.burd@rbc.com",
     "joel.kornblum@rbc.com",
+    "christine.knott@rbc.com",
 ]
 
 TEMPLATE_FILE = Path("report_template.docx")
